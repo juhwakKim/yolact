@@ -61,7 +61,7 @@ class COCODetection(data.Dataset):
         prep_crowds (bool): Whether or not to prepare crowds for the evaluation step.
     """
 
-    def __init__(self, image_path, info_file, transform=None,
+    def __init__(self, color_img_path, depth_img_path, info_file, transform=None,
                  target_transform=None,
                  dataset_name='MS COCO', has_gt=True):
         # Do this here because we have too many things named COCO
@@ -70,7 +70,8 @@ class COCODetection(data.Dataset):
         if target_transform is None:
             target_transform = COCOAnnotationTransform()
 
-        self.root = image_path
+        self.color_root = color_img_path
+        self.depth_root = depth_img_path
         self.coco = COCO(info_file)
         
         self.ids = list(self.coco.imgToAnns.keys())
@@ -91,8 +92,8 @@ class COCODetection(data.Dataset):
             tuple: Tuple (image, (target, masks, num_crowds)).
                    target is the object returned by ``coco.loadAnns``.
         """
-        im, gt, masks, h, w, num_crowds = self.pull_item(index)
-        return im, (gt, masks, num_crowds)
+        color_im, depth_im, gt, masks, h, w, num_crowds = self.pull_item(index)
+        return (color_im, depth_im), (gt, masks, num_crowds)
 
     def __len__(self):
         return len(self.ids)
@@ -112,37 +113,63 @@ class COCODetection(data.Dataset):
             ann_ids = self.coco.getAnnIds(imgIds=img_id)
 
             # Target has {'segmentation', 'area', iscrowd', 'image_id', 'bbox', 'category_id'}
-            target = [x for x in self.coco.loadAnns(ann_ids) if x['image_id'] == img_id]
+            target = [x for x in self.coco.loadAnns(ann_ids) if x["image_id"] == img_id]
         else:
             target = []
 
         # Separate out crowd annotations. These are annotations that signify a large crowd of
         # objects of said class, where there is no annotation for each individual object. Both
         # during testing and training, consider these crowds as neutral.
-        crowd  = [x for x in target if     ('iscrowd' in x and x['iscrowd'])]
-        target = [x for x in target if not ('iscrowd' in x and x['iscrowd'])]
+        crowd = [x for x in target if ("iscrowd" in x and x["iscrowd"])]
+        target = [x for x in target if not ("iscrowd" in x and x["iscrowd"])]
         num_crowds = len(crowd)
 
         for x in crowd:
-            x['category_id'] = -1
+            x["category_id"] = -1
 
         # This is so we ensure that all crowd annotations are at the end of the array
         target += crowd
-        
+
         # The split here is to have compatibility with both COCO2014 and 2017 annotations.
         # In 2014, images have the pattern COCO_{train/val}2014_%012d.jpg, while in 2017 it's %012d.jpg.
         # Our script downloads the images as %012d.jpg so convert accordingly.
-        file_name = self.coco.loadImgs(img_id)[0]['file_name']
-        
-        if file_name.startswith('COCO'):
-            file_name = file_name.split('_')[-1]
+        file_name = self.coco.loadImgs(img_id)[0]["file_name"]
 
-        path = osp.join(self.root, file_name)
-        assert osp.exists(path), 'Image path does not exist: {}'.format(path)
-        
-        img = cv2.imread(path)
-        height, width, _ = img.shape
-        
+        if file_name.startswith("COCO"):
+            file_name = file_name.split("_")[-1]
+
+        color_path = osp.join(self.color_root, file_name)
+        assert osp.exists(color_path), "Color image path does not exist: {}".format(
+            color_path
+        )
+
+        depth_path = osp.join(self.depth_root, file_name)
+        assert osp.exists(depth_path), "Depth image path does not exist: {}".format(
+            depth_path
+        )
+
+        # read color image in BGR color encoding.
+        color_img = cv2.imread(color_path, cv2.IMREAD_COLOR)
+        height, width, _ = color_img.shape
+
+        # read depth image with the encoding unchanged.
+        depth_img = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
+
+        # depth image preprocess
+        # considering 16uc1 depth encoding only. unit is [mm]
+
+        # create channel dimension
+        if len(depth_img.shape) < 3:
+            depth_img = np.expand_dims(depth_img, axis=2)
+        depth_height, depth_width, _ = depth_img.shape
+
+        # depth, color size match assertion
+        assert (depth_height == height) and (
+            depth_width == width
+        ), "image size does not match (color:[{}, {}], depth:[{},{}] in [h,w] format)".format(
+            height, width, depth_height, depth_width
+        )
+
         if len(target) > 0:
             # Pool all the masks for this image into one [num_objects,height,width] matrix
             masks = [self.coco.annToMask(obj).reshape(-1) for obj in target]
@@ -155,25 +182,45 @@ class COCODetection(data.Dataset):
         if self.transform is not None:
             if len(target) > 0:
                 target = np.array(target)
-                img, masks, boxes, labels = self.transform(img, masks, target[:, :4],
-                    {'num_crowds': num_crowds, 'labels': target[:, 4]})
-            
+                img, img2, masks, boxes, labels = self.transform(
+                    color_img,
+                    depth_img,
+                    masks,
+                    target[:, :4],
+                    {"num_crowds": num_crowds, "labels": target[:, 4]},
+                )
+
                 # I stored num_crowds in labels so I didn't have to modify the entirety of augmentations
-                num_crowds = labels['num_crowds']
-                labels     = labels['labels']
-                
+                num_crowds = labels["num_crowds"]
+                labels = labels["labels"]
+
                 target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
             else:
-                img, _, _, _ = self.transform(img, np.zeros((1, height, width), dtype=np.float), np.array([[0, 0, 1, 1]]),
-                    {'num_crowds': 0, 'labels': np.array([0])})
+                img, _, _, _ = self.transform(
+                    color_img,
+                    depth_img,
+                    np.zeros((1, height, width), dtype=np.float),
+                    np.array([[0, 0, 1, 1]]),
+                    {"num_crowds": 0, "labels": np.array([0])},
+                )
                 masks = None
                 target = None
 
         if target.shape[0] == 0:
-            print('Warning: Augmentation output an example with no ground truth. Resampling...')
-            return self.pull_item(random.randint(0, len(self.ids)-1))
+            print(
+                "Warning: Augmentation output an example with no ground truth. Resampling..."
+            )
+            return self.pull_item(random.randint(0, len(self.ids) - 1))
 
-        return torch.from_numpy(img).permute(2, 0, 1), target, masks, height, width, num_crowds
+        return (
+            torch.from_numpy(img).permute(2, 0, 1),
+            torch.from_numpy(img2).permute(2, 0, 1),
+            target,
+            masks,
+            height,
+            width,
+            num_crowds,
+        )
 
     def pull_image(self, index):
         '''Returns the original image object at index in PIL form
@@ -187,8 +234,8 @@ class COCODetection(data.Dataset):
             cv2 img
         '''
         img_id = self.ids[index]
-        path = self.coco.loadImgs(img_id)[0]['file_name']
-        return cv2.imread(osp.join(self.root, path), cv2.IMREAD_COLOR)
+        path = self.coco.loadImgs(img_id)[0]["file_name"]
+        return cv2.imread(osp.join(self.color_root, path), cv2.IMREAD_COLOR)
 
     def pull_anno(self, index):
         '''Returns the original annotation of image at index
@@ -206,24 +253,44 @@ class COCODetection(data.Dataset):
         ann_ids = self.coco.getAnnIds(imgIds=img_id)
         return self.coco.loadAnns(ann_ids)
 
+    def pull_depth(self, index):
+        """Returns the original depth image object at index in PIL form
+
+        Note: not using self.__getitem__(), as any transformations passed in
+        could mess up this functionality.
+
+        Argument:
+            index (int): index of img to show
+        Return:
+            cv2 img
+        """
+        img_id = self.ids[index]
+        path = self.coco.loadImgs(img_id)[0]["file_name"]
+        return cv2.imread(osp.join(self.depth_root, path), cv2.IMREAD_UNGHANCED)
+
     def __repr__(self):
-        fmt_str = 'Dataset ' + self.__class__.__name__ + '\n'
-        fmt_str += '    Number of datapoints: {}\n'.format(self.__len__())
-        fmt_str += '    Root Location: {}\n'.format(self.root)
-        tmp = '    Transforms (if any): '
-        fmt_str += '{0}{1}\n'.format(tmp, self.transform.__repr__().replace('\n', '\n' + ' ' * len(tmp)))
-        tmp = '    Target Transforms (if any): '
-        fmt_str += '{0}{1}'.format(tmp, self.target_transform.__repr__().replace('\n', '\n' + ' ' * len(tmp)))
+        fmt_str = "Dataset " + self.__class__.__name__ + "\n"
+        fmt_str += "    Number of datapoints: {}\n".format(self.__len__())
+        fmt_str += "    Color Root Location: {}\n".format(self.color_root)
+        fmt_str += "    Depth Root Location: {}\n".format(self.depth_root)
+        tmp = "    Transforms (if any): "
+        fmt_str += "{0}{1}\n".format(
+            tmp, self.transform.__repr__().replace("\n", "\n" + " " * len(tmp))
+        )
+        tmp = "    Target Transforms (if any): "
+        fmt_str += "{0}{1}".format(
+            tmp, self.target_transform.__repr__().replace("\n", "\n" + " " * len(tmp))
+        )
         return fmt_str
 
-def enforce_size(img, targets, masks, num_crowds, new_w, new_h):
-    """ Ensures that the image is the given size without distorting aspect ratio. """
+def enforce_size(color_img, depth_img, targets, masks, num_crowds, new_w, new_h):
+    """Ensures that the image is the given size without distorting aspect ratio."""
     with torch.no_grad():
-        _, h, w = img.size()
+        _, h, w = color_img.size()
 
         if h == new_h and w == new_w:
-            return img, targets, masks, num_crowds
-        
+            return color_img, depth_img, targets, masks, num_crowds
+
         # Resize the image so that it fits within new_w, new_h
         w_prime = new_w
         h_prime = h * new_w / w
@@ -236,26 +303,39 @@ def enforce_size(img, targets, masks, num_crowds, new_w, new_h):
         h_prime = int(h_prime)
 
         # Do all the resizing
-        img = F.interpolate(img.unsqueeze(0), (h_prime, w_prime), mode='bilinear', align_corners=False)
-        img.squeeze_(0)
+        color_img = F.interpolate(
+            color_img.unsqueeze(0),
+            (h_prime, w_prime),
+            mode="bilinear",
+            align_corners=False,
+        )
+        color_img.squeeze_(0)
+
+        depth_img = F.interpolate(
+            depth_img.unsqueeze(0),
+            (h_prime, w_prime),
+            mode="bilinear",
+            align_corners=False,
+        )
+        depth_img.squeeze_(0)
 
         # Act like each object is a color channel
-        masks = F.interpolate(masks.unsqueeze(0), (h_prime, w_prime), mode='bilinear', align_corners=False)
+        masks = F.interpolate(
+            masks.unsqueeze(0), (h_prime, w_prime), mode="bilinear", align_corners=False
+        )
         masks.squeeze_(0)
 
         # Scale bounding boxes (this will put them in the top left corner in the case of padding)
-        targets[:, [0, 2]] *= (w_prime / new_w)
-        targets[:, [1, 3]] *= (h_prime / new_h)
+        targets[:, [0, 2]] *= w_prime / new_w
+        targets[:, [1, 3]] *= h_prime / new_h
 
         # Finally, pad everything to be the new_w, new_h
         pad_dims = (0, new_w - w_prime, 0, new_h - h_prime)
-        img   = F.pad(  img, pad_dims, mode='constant', value=0)
-        masks = F.pad(masks, pad_dims, mode='constant', value=0)
+        color_img = F.pad(color_img, pad_dims, mode="constant", value=0)
+        depth_img = F.pad(depth_img, pad_dims, mode="constant", value=0)
+        masks = F.pad(masks, pad_dims, mode="constant", value=0)
 
-        return img, targets, masks, num_crowds
-        
-
-
+        return color_img, depth_img, targets, masks, num_crowds
 
 def detection_collate(batch):
     """Custom collate fn for dealing with batches of images that have a different
@@ -271,14 +351,16 @@ def detection_collate(batch):
                 on 0 dim. The output gt is a tuple of annotations and masks.
     """
     targets = []
-    imgs = []
+    color_imgs = []
+    depth_imgs = []
     masks = []
     num_crowds = []
 
     for sample in batch:
-        imgs.append(sample[0])
+        color_imgs.append(sample[0][0])
+        depth_imgs.append(sample[0][1])
         targets.append(torch.FloatTensor(sample[1][0]))
         masks.append(torch.FloatTensor(sample[1][1]))
         num_crowds.append(sample[1][2])
 
-    return imgs, (targets, masks, num_crowds)
+    return (color_imgs,depth_imgs), (targets, masks, num_crowds)
