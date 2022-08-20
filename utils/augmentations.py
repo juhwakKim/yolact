@@ -749,7 +749,7 @@ class SSDAugmentation(object):
             [
                 ConvertFromInts(),
                 ToAbsoluteCoords(),
-                # enable_if(cfg.augment_photometric_distort, PhotometricDistort()),
+                enable_if(cfg.augment_photometric_distort, PhotometricDistort()),
                 enable_if(cfg.augment_expand, Expand(mean)),
                 enable_if(cfg.augment_random_sample_crop, RandomSampleCrop()),
                 enable_if(cfg.augment_random_mirror, RandomMirror()),
