@@ -257,11 +257,17 @@ def train():
     # Which learning rate adjustment step are we on? lr' = lr * gamma ^ step_index
     step_index = 0
 
-    data_loader = data.DataLoader(dataset, args.batch_size,
-                                  num_workers=args.num_workers,
-                                  shuffle=True, collate_fn=detection_collate,
-                                  pin_memory=True)
-    
+    if args.cuda:
+        data_loader = data.DataLoader(dataset, args.batch_size,
+                                    num_workers=args.num_workers,
+                                    shuffle=True, collate_fn=detection_collate,
+                                    generator=torch.Generator(device='cuda'),
+                                    pin_memory=True)
+    else:
+        data_loader = data.DataLoader(dataset, args.batch_size,
+                                    num_workers=args.num_workers,
+                                    shuffle=True, collate_fn=detection_collate,
+                                    pin_memory=True)    
     
     save_path = lambda epoch, iteration: SavePath(cfg.name, epoch, iteration).get_path(root=args.save_folder)
     time_avg = MovingAverage()
