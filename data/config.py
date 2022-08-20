@@ -100,7 +100,111 @@ class Config(object):
 
 
 # ----------------------- DATASETS ----------------------- #
+# ----------------------- ORIGINAL DATASETS ----------------------- #
+dataset_base = Config(
+    {
+        "name": "Base Dataset",
+        # Training images and annotations
+        "train_images": "./data/coco/images/",
+        "train_info": "path_to_annotation_file",
+        # Validation images and annotations.
+        "valid_images": "./data/coco/images/",
+        "valid_info": "path_to_annotation_file",
+        # Whether or not to load GT. If this is False, eval.py quantitative evaluation won't work.
+        "has_gt": True,
+        # A list of names for each of you classes.
+        "class_names": COCO_CLASSES,
+        "mean": MEANS,
+        "std": STD,
+        # COCO class ids aren't sequential, so this is a bandage fix. If your ids aren't sequential,
+        # provide a map from category_id -> index in class_names + 1 (the +1 is there because it's 1-indexed).
+        # If not specified, this just assumes category ids start at 1 and increase sequentially.
+        "label_map": None,
+    }
+)
+
+coco2014_dataset = dataset_base.copy({
+    'name': 'COCO 2014',
+
+    'train_info': './data/coco/annotations/instances_train2014.json',
+    'valid_info': './data/coco/annotations/instances_val2014.json',
+
+    'label_map': COCO_LABEL_MAP
+})
+
+coco2017_dataset = dataset_base.copy({
+    'name': 'COCO 2017',
+
+    'train_info': './data/coco/annotations/instances_train2017.json',
+    'valid_info': './data/coco/annotations/instances_val2017.json',
+
+    'label_map': COCO_LABEL_MAP
+})
+
+coco2017_testdev_dataset = dataset_base.copy({
+    'name': 'COCO 2017 Test-Dev',
+
+    'valid_info': './data/coco/annotations/image_info_test-dev2017.json',
+    'has_gt': False,
+
+    'label_map': COCO_LABEL_MAP
+})
+
+PASCAL_CLASSES = ("aeroplane", "bicycle", "bird", "boat", "bottle",
+                  "bus", "car", "cat", "chair", "cow", "diningtable",
+                  "dog", "horse", "motorbike", "person", "pottedplant",
+                  "sheep", "sofa", "train", "tvmonitor")
+
+pascal_sbd_dataset = dataset_base.copy({
+    'name': 'Pascal SBD 2012',
+
+    'train_images': './data/sbd/img',
+    'valid_images': './data/sbd/img',
+
+    'train_info': './data/sbd/pascal_sbd_train.json',
+    'valid_info': './data/sbd/pascal_sbd_val.json',
+
+    'class_names': PASCAL_CLASSES,
+})
+
 # ----------------------- CUSTOM DATASETS ----------------------- #
+unloader_rgbd_dataset_base = dataset_base.copy(
+    {
+        "name": "unloader_rgbd dataset base",
+        # Whether or not to load GT. If this is False, eval.py quantitative evaluation won't work.
+        "has_gt": True,
+        # A list of names for each of you classes.
+        "class_names": ["sack", "pouch", "box", "icebox", "bottle"],
+        "num_classes": 6,  # This should include the background class
+        # COCO class ids aren't sequential, so this is a bandage fix. If your ids aren't sequential,
+        # provide a map from category_id -> index in class_names + 1 (the +1 is there because it's 1-indexed).
+        # If not specified, this just assumes category ids start at 1 and increase sequentially.
+        "label_map": {1: 4, 2: 3, 3: 2, 4: 1, 5: 5},
+    }
+)
+
+unloader_rgbd_dataset = unloader_rgbd_dataset_base.copy(
+    {
+        "name": "unloader_rgbd dataset",
+        "train_color_images": "/home/plaif/Downloads/unloader_rgbd_20210930/unloader_rgbd/color",
+        "train_depth_images": "/home/plaif/Downloads/unloader_rgbd_20210930/unloader_rgbd/depth",
+        "train_info": "/home/plaif/Downloads/unloader_rgbd_20210930/unloader_rgbd/info/train.json",
+        # Validation images and annotations.
+        "valid_color_images": "/home/plaif/Downloads/unloader_rgbd_20210930/unloader_rgbd/color",
+        "valid_depth_images": "/home/plaif/Downloads/unloader_rgbd_20210930/unloader_rgbd/depth",
+        "valid_info": "/home/plaif/Downloads/unloader_rgbd_20210930/unloader_rgbd/info/val.json",
+        # Validation images and annotations.
+        "test_color_images": "/home/plaif/Downloads/unloader_rgbd_20210930/unloader_rgbd/color",
+        "test_depth_images": "/home/plaif/Downloads/unloader_rgbd_20210930/unloader_rgbd/depth",
+        "test_info": "/home/plaif/Downloads/unloader_rgbd_20210930/unloader_rgbd/info/test.json",
+        # augmentation settings
+        "augment_random_sample_crop": False,
+        # real mean and std
+        "mean": [124.20291064, 119.6903013, 114.94422638, 578.37429271],
+        "std": [71.05941776, 73.38871724, 74.34486907, 1002.53661683],
+    }
+)
+
 ul_aug_dataset = Config({
     'name': 'Unloading Augmented',
 
@@ -176,75 +280,6 @@ ul_aug_gray_dataset = Config({
     # If not specified, this just assumes category ids start at 1 and increase sequentially.
     'label_map': {1:  1,  2:  2,  3:  3,  4:  4}
 })
-
-# ----------------------- ORIGINAL DATASETS ----------------------- #
-dataset_base = Config({
-    'name': 'Base Dataset',
-
-    # Training images and annotations
-    'train_images': './data/coco/images/',
-    'train_info':   'path_to_annotation_file',
-
-    # Validation images and annotations.
-    'valid_images': './data/coco/images/',
-    'valid_info':   'path_to_annotation_file',
-
-    # Whether or not to load GT. If this is False, eval.py quantitative evaluation won't work.
-    'has_gt': True,
-
-    # A list of names for each of you classes.
-    'class_names': COCO_CLASSES,
-
-    # COCO class ids aren't sequential, so this is a bandage fix. If your ids aren't sequential,
-    # provide a map from category_id -> index in class_names + 1 (the +1 is there because it's 1-indexed).
-    # If not specified, this just assumes category ids start at 1 and increase sequentially.
-    'label_map': None
-})
-
-coco2014_dataset = dataset_base.copy({
-    'name': 'COCO 2014',
-
-    'train_info': './data/coco/annotations/instances_train2014.json',
-    'valid_info': './data/coco/annotations/instances_val2014.json',
-
-    'label_map': COCO_LABEL_MAP
-})
-
-coco2017_dataset = dataset_base.copy({
-    'name': 'COCO 2017',
-
-    'train_info': './data/coco/annotations/instances_train2017.json',
-    'valid_info': './data/coco/annotations/instances_val2017.json',
-
-    'label_map': COCO_LABEL_MAP
-})
-
-coco2017_testdev_dataset = dataset_base.copy({
-    'name': 'COCO 2017 Test-Dev',
-
-    'valid_info': './data/coco/annotations/image_info_test-dev2017.json',
-    'has_gt': False,
-
-    'label_map': COCO_LABEL_MAP
-})
-
-PASCAL_CLASSES = ("aeroplane", "bicycle", "bird", "boat", "bottle",
-                  "bus", "car", "cat", "chair", "cow", "diningtable",
-                  "dog", "horse", "motorbike", "person", "pottedplant",
-                  "sheep", "sofa", "train", "tvmonitor")
-
-pascal_sbd_dataset = dataset_base.copy({
-    'name': 'Pascal SBD 2012',
-
-    'train_images': './data/sbd/img',
-    'valid_images': './data/sbd/img',
-
-    'train_info': './data/sbd/pascal_sbd_train.json',
-    'valid_info': './data/sbd/pascal_sbd_val.json',
-
-    'class_names': PASCAL_CLASSES,
-})
-
 
 # ----------------------- TRANSFORMS ----------------------- #
 
@@ -366,7 +401,15 @@ vgg16_backbone = backbone_base.copy({
     'pred_aspect_ratios': [[[1], [1, sqrt(2), 1/sqrt(2), sqrt(3), 1/sqrt(3)][:n]] for n in [3, 5, 5, 5, 3, 3]],
 })
 
-
+resnet50_rgbd_backbone = resnet50_backbone.copy(
+    {
+        "name": "ResNet50RGBD",
+        # 'path': 'resnet50-19c8e357.pth',
+        "type": ResNetBackbone, #ResNetBackboneRGBD
+        "args": ([3, 4, 6, 3],),
+        "transform": resnet_transform,
+    }
+)
 # ----------------------- MASK BRANCH TYPES ----------------------- #
 
 mask_type = Config({
@@ -876,6 +919,24 @@ yolact_resnet50_max1024_config = yolact_resnet50_config.copy({
     'lr_steps': (40000, 80000, 160000, 320000),
     'max_iter': 800000,
 })
+
+yolact_resnet50_unloader_rgbd_config = yolact_resnet50_max1024_config.copy(
+    {
+        "name": "yolact_resnet50_unloader_rgbd",
+        "dataset": unloader_rgbd_dataset,
+        "num_classes": len(unloader_rgbd_dataset.class_names) + 1,
+        "backbone": resnet50_rgbd_backbone.copy(
+            {
+                "selected_layers": list(range(1, 4)),
+                "pred_scales": yolact_base_config.backbone.pred_scales,
+                "pred_aspect_ratios": yolact_base_config.backbone.pred_aspect_ratios,
+                "use_pixel_scales": True,
+                "preapply_sqrt": False,
+                "use_square_anchors": True,  # This is for backward compatability with a bug
+            }
+        ),
+    }
+)
 
 
 # Default config
